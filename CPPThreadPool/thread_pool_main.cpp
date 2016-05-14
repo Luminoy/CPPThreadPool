@@ -23,7 +23,64 @@ public:
 	//ThreadPool();
 	ThreadPool(DWORD dwNum = 4);
 	~ThreadPool();
+	//工作线程
+	static DWORD WINAPI DefaultJobProc(LPVOID lpParam = NULL) {
+		ThreadItem *pThread = static_cast<ThreadItem *>(lpParam);
+		assert(pThread);
+		ThreadPool *pThreadPoolObj = pThread->_pThis;
+		assert(pThreadPoolObj);
+		InterlockedIncrement(&pThreadPoolObj->_lThreadNum); //??? why
+		HANDLE hWaitHandle[3]; //??? why
+		hWaitHandle[0] = pThreadPoolObj->_SemaphoreCall;
+		hWaitHandle[1] = pThreadPoolObj->_SemaphoreDel;
+		hWaitHandle[2] = pThreadPoolObj->_EventEnd;
+		JobItem *pJob;
+		bool fHasJob;
+		while (1) {
+			DWORD wr = WaitForMultipleObjects(3, hWaitHandle, false, INFINITE);
+			if (wr == WAIT_OBJECT_0 + 1) { //?? what's that??
+				break;
+			}
+			//从队列中取得用户作业
+			EnterCriticalSection(&pThreadPoolObj->_csWorkQueue);
+			if (fHasJob = !pThreadPoolObj->_JobQueue.empty()) {
+				pJob = pThreadPoolObj->_JobQueue.front();
+				pThreadPoolObj->_JobQueue.pop();
+				assert(pJob);
+			}
+			LeaveCriticalSection(&pThreadPoolObj->_csWorkQueue);
 
+			if (wr == WAIT_OBJECT_0 + 2 && !fHasJob) {
+				break;
+			}
+
+			if (fHasJob && pJob) {
+				InterlockedIncrement(&pThreadPoolObj->_lRunningNum); //????
+				pThread->_dwLastBeginTime = GetTickCount();
+				pThread->_dwCount++;
+				pThread->_fIsRunning = true;
+				pJob->_pFunc(pJob->_pParam);
+				delete pJob;
+				pThread->_fIsRunning = false;
+				InterlockedDecrement(&pThreadPoolObj->_lRunningNum);
+			}
+		}
+	}
+	//调用用户对象虚函数
+	static void CallProc(void *pData) { 
+		CallProcPara *cp = static_cast<CallProcPara *>(pData);
+		assert(cp);
+		if (cp) {
+			cp->_pObj->DoJob(cp->_pParam);
+			delete cp;
+		}
+	}
+	struct CallProcPara //用户对象结构
+	{
+		ThreadJob *_pObj; //用户对象
+		void *_pParam; //用户参数
+		CallProcPara(ThreadJob *pObj, void *pParam) : _pObj(pObj), _pParam(pParam) {}
+	};
 	struct JobItem  //用户函数结构
 	{
 		void(*_pFunc)(void *); //函数指针
