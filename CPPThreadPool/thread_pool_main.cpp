@@ -145,6 +145,10 @@ public:
 	inline DWORD GetRunningSize() {
 		return (DWORD)_lRunningNum;
 	}
+	bool IsRunning() {
+		return _lRunningNum > 0;
+	}
+
 	//调用用户对象虚函数
 	static void CallProc(void *pData) { 
 		CallProcPara *cp = static_cast<CallProcPara *>(pData);
@@ -192,7 +196,17 @@ ThreadPool::~ThreadPool()
 {
 }
 
+void threadfunc(void *p) {
+	int *myVal = (int *)p;
+	
+}
+
+#endif // !_CPP_THREAD_POOL_H
+
 int main() {
+	ThreadPool tp(20);
+	for (int i = 0; i < 1000; i++) {
+		tp.Call(threadfunc, &i);
+	}
 	return 0;
 }
-#endif // !_CPP_THREAD_POOL_H
